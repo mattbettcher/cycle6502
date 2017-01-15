@@ -70,13 +70,35 @@ impl Mos6502 {
         };
 
         use self::MicroCode::*;
+        use self::What::*;
         // addressing modes
-        const IMM: [MicroCode; 2] = [Fetch, NextCycle];
+        const IMPLIED: [MicroCode; 4] = [Fetch(Opcode), NextCycle, Fetch(DiscardOpcode), NextCycle];
+        const IMMEDIATE: [MicroCode; 4] = [Fetch(Opcode), NextCycle, Fetch(Imm), NextCycle];
+        const ABSOLUTE: [MicroCode; 8] = [Fetch(Opcode), NextCycle, Fetch(Adl), NextCycle, Fetch(Adh), NextCycle, Read(Adh_Adl), NextCycle];
+        const ZERO_PAGE: [MicroCode; 6] = [Fetch(Opcode), NextCycle, Fetch(Adl), NextCycle, Read(Adl), NextCycle];
+        const RELATIVE: [MicroCode; 4] = [Fetch(Opcode), NextCycle, Fetch(Offset), NextCycle]; // TODO(matt): finish
+        const ABSOLUTE_X: [MicroCode; 8] = [Fetch(Opcode), NextCycle, Fetch(Adl), NextCycle, Fetch(Adh), NextCycle, Read(Adh_Adl), NextCycle]; // TODO(matt): finish
+        /*const ABSOLUTE_Y: [MicroCode; 2] = [];
+        const ZERO_PAGE_X: [MicroCode; 2] = [];
+        const ZERO_PAGE_Y: [MicroCode; 2] = [];
+        const INDIRECT: [MicroCode; 2] = [];
+        const INDEXED_INDIRECT: [MicroCode; 2] = [];
+        const INDIRECT_INDEXED: [MicroCode; 2] = [];
+        */
+
         // instructions
         const CLC: [MicroCode; 2] = [Clear(1), NextCycle];
 
         // this can be a macro
-        cpu.instructions.insert(0x18, concatenate_arrays::<MicroCode>(&IMM, &CLC));
+        macro_rules! add_instruction {
+            ($op:tt, $addr:tt, $inst:tt) => (
+                cpu.instructions.insert($op, concatenate_arrays::<MicroCode>(&$addr, &$inst));
+            )
+        }
+
+        add_instruction!(0x18, IMMEDIATE, CLC);
+
+        //cpu.instructions.insert(0x18, concatenate_arrays::<MicroCode>(&IMMEDIATE, &CLC));
 
         cpu
     }
@@ -116,9 +138,20 @@ impl Mos6502 {
 }
 
 #[derive(Debug, Clone)]
-pub enum MicroCode {
-    Fetch,
-    FetchNext,
+enum What {
+    Opcode,
+    DiscardOpcode,
+    Adl,
+    Adh,
+    Adh_Adl,
+    Imm,
+    Offset,
+}
+
+#[derive(Debug, Clone)]
+enum MicroCode {
+    Fetch(What),
+    Read(What),
     NextCycle,
 
     Clear(u8),
