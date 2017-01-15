@@ -6,10 +6,9 @@
     It does not emulate half cycles.
 */
 
-mod microcode_engine;
-mod mnemonic;
+use std::collections::HashMap;
 
-use microcode_engine::*;
+mod mnemonic;
 
 // Defines where the bits of the processor status register are.
 const C_BIT: u8 = 0b0000_0001;
@@ -51,41 +50,56 @@ pub struct Mos6502 {
     adl: u8,
     adh: u8,
 
+    // counter for cycles executed
+    cycles: usize,
+    // microcode cycles executed
+    mc_cycles: usize,
 
-    mc_engine: MicrocodeEngine,
+    sub_step: usize,
+
+    instructions: HashMap<u8, Vec<MicroCode>>,
 }
 
 impl Mos6502 {
     
     // 
     pub fn new() -> Self {
-        // TODO(matt): verify what we want pc to start as.
-        Mos6502 {
+        let mut cpu = Mos6502 {
             a: 0, x: 0, y: 0, s: 0, pc: 0x00ff, p: 0x22, ir: 0, adl: 0, adh: 0, 
-            mc_engine: MicrocodeEngine { cycles: 0, mc_cycles: 0, instruction_loaded: false, instruction: InstructionDef::from(0x00), sub_step: 0 },
-        }
+            cycles: 0, mc_cycles: 0, instructions: HashMap::new(), sub_step: 0,
+        };
+
+        use self::MicroCode::*;
+        // addressing modes
+        const IMM: [MicroCode; 2] = [Fetch, NextCycle];
+        // instructions
+        const CLC: [MicroCode; 2] = [Clear(1), NextCycle];
+
+        // this can be a macro
+        cpu.instructions.insert(0x18, concatenate_arrays::<MicroCode>(&IMM, &CLC));
+
+        cpu
     }
 
     // steps the CPU one cycle
     pub fn step(&mut self, bus: &mut Bus) {
-        if self.mc_engine.cycles <= 8 {
+        if self.cycles <= 8 {
             // TODO(matt): add start-up instructions
             // ref <https://www.c64-wiki.com/index.php/Reset_(Process)>
         } else {
             // normal operation
             let mut cycle_complete = false;
-            // load instruction once
-            if !self.mc_engine.instruction_loaded { 
-                self.mc_engine.instruction = InstructionDef::from(self.ir);
-                self.mc_engine.sub_step = 0;
-            }
             // loop of micro_ops until next cycle op
-            while !cycle_complete {
-                let ref micro_op = self.mc_engine.instruction.ops[self.mc_engine.sub_step];
-                match micro_op {
-                    // TODO(matt): impletment micro_ops
-                    _ => panic!("Unimplemented microcode {:?}", micro_op),
+            if let Some(inst) = self.instructions.get(&self.ir) {
+                while !cycle_complete {
+                    let ref micro_op = inst[self.sub_step];
+                    match micro_op {
+                        // TODO(matt): impletment micro_ops
+                        _ => panic!("Unimplemented microcode {:?}", micro_op),
+                    }
                 }
+            } else {
+                panic!("Opcode 0x{:02x} - Instruction not implemented!");
             }
         }
     }
@@ -99,6 +113,27 @@ impl Mos6502 {
     pub fn nmi() {
         unimplemented!();
     }
+}
+
+#[derive(Debug, Clone)]
+pub enum MicroCode {
+    Fetch,
+    FetchNext,
+    NextCycle,
+
+    Clear(u8),
+    Set(u8),
+
+    // TODO(matt): add other microcode instructions...
+}
+
+fn concatenate_arrays<T: Clone>(x: &[T], y: &[T]) -> Vec<T> {
+    let mut concat: Vec<T> = vec![x[0].clone(); x.len()];
+ 
+    concat.clone_from_slice(x);
+    concat.extend_from_slice(y);
+ 
+    concat
 }
 
 #[cfg(test)]
